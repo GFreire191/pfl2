@@ -2,7 +2,6 @@ import Data.Char (isAlpha, isAlphaNum, isDigit, isNumber, isSpace)
 import Data.List (deleteBy, elemIndex, intercalate, isPrefixOf, sort)
 import Data.Maybe (fromMaybe)
 import Debug.Trace
-import Text.Read (readMaybe)
 
 -- PFL 2023/24 - Haskell practical assignment quickstart
 
@@ -100,27 +99,27 @@ updateState var val state = (var, val) : deleteBy (\(var1, _) (var2, _) -> var1 
 
 -- TODO: Define the types Aexp, Bexp, Stm and Program
 
-data Aexp = Num Integer | Var String | AddA Aexp Aexp | SubA Aexp Aexp | MultA Aexp Aexp deriving (Show)
+data Aexp = Num Integer | VarExp String | AddExp Aexp Aexp | SubExp Aexp Aexp | MultExp Aexp Aexp deriving (Show)
 
-data Bexp = EquB Aexp Aexp | LeB Aexp Aexp | AndB Bexp Bexp | EquBoolB Bexp Bexp | NegB Bexp | TruB | FalsB deriving (Show)
+data Bexp = EquAExp Aexp Aexp | LeExp Aexp Aexp | AndExp Bexp Bexp | EquBoExp Bexp Bexp | NegExp Bexp | TruB | FalsB deriving (Show)
 
-data Stm = BranchS Bexp [Stm] [Stm] | LoopS Bexp [Stm] | VarAssign String Aexp deriving (Show)
+data Stm = BranchS Bexp [Stm] [Stm] | LoopS Bexp [Stm] | Assign String Aexp deriving (Show)
 
 type Program = [Stm]
 
 compA :: Aexp -> Code
 compA (Num a) = [Push a]
-compA (Var a) = [Fetch a]
-compA (AddA a b) = compA b ++ compA a ++ [Add]
-compA (SubA a b) = compA b ++ compA a ++ [Sub]
-compA (MultA a b) = compA b ++ compA a ++ [Mult]
+compA (VarExp a) = [Fetch a]
+compA (AddExp a b) = compA b ++ compA a ++ [Add]
+compA (SubExp a b) = compA b ++ compA a ++ [Sub]
+compA (MultExp a b) = compA b ++ compA a ++ [Mult]
 
 compB :: Bexp -> Code
-compB (EquB a b) = compA b ++ compA a ++ [Equ]
-compB (LeB a b) = compA b ++ compA a ++ [Le]
-compB (AndB a b) = compB b ++ compB a ++ [And]
-compB (NegB a) = compB a ++ [Neg]
-compB (EquBoolB a b) = compB b ++ compB a ++ [Equ]
+compB (EquAExp a b) = compA b ++ compA a ++ [Equ]
+compB (EquBoExp a b) = compB b ++ compB a ++ [Equ]
+compB (LeExp a b) = compA b ++ compA a ++ [Le]
+compB (AndExp a b) = compB b ++ compB a ++ [And]
+compB (NegExp a) = compB a ++ [Neg]
 compB TruB = [Tru]
 compB FalsB = [Fals]
 
@@ -129,176 +128,11 @@ compile = concatMap compileStm
 
 compileStm :: Stm -> Code
 compileStm stm = case stm of
-  VarAssign var aexp -> compA aexp ++ [Store var]
+  Assign var aexp -> compA aexp ++ [Store var]
   BranchS bexp stm1 stm2 -> compB bexp ++ [Branch (compile stm1) (compile stm2)]
   LoopS bexp stm -> [Loop (compB bexp) (compile stm)]
 
-parse :: String -> Program
-parse str = parseAuxiliary (lexer str) []
 
-parseAuxiliary :: [String] -> [Stm] -> [Stm]
-parseAuxiliary [] statements = statements
-parseAuxiliary (token : ":=" : remainingTokens) statements =
-  let (beforeAssignment, afterAssignment) = break (== ";") (token : ":=" : remainingTokens)
-   in case parseSumOrProdOrIntOrPar (drop 2 beforeAssignment) of
-        Just (expression, []) -> parseAuxiliary (drop 1 afterAssignment) (statements ++ [VarAssign token expression])
-        Nothing -> error "Parse Error"
-        _ -> error "Parse Error"
-parseAuxiliary ("(" : remainingTokens) statements =
-  let (beforeClosingParen, afterClosingParen) = break (== ")") ("(" : remainingTokens)
-   in parseAuxiliary (drop 1 afterClosingParen) (statements ++ parseAuxiliary (drop 1 beforeClosingParen) [])
-parseAuxiliary (";" : remainingTokens) statements = parseAuxiliary remainingTokens statements
-parseAuxiliary ("if" : remainingTokens) statements =
-  let (beforeThen, afterThen) = break (== "then") ("if" : remainingTokens)
-      (beforeElse, afterElse) = break (== "else") afterThen
-      tokensAfterElse = drop 1 afterElse
-   in case takeFirstElement tokensAfterElse of
-        "(" ->
-          let (beforeClosingParen, afterClosingParen) = break (== ")") tokensAfterElse
-           in parseAuxiliary (drop 1 afterClosingParen) (statements ++ [BranchS (getJustValueBexp (parseAndandBoolEq (checkIfParenthesis (drop 1 beforeThen)))) (parseAuxiliary (drop 1 beforeElse) []) (parseAuxiliary beforeClosingParen [])])
-        _ ->
-          let (beforeSemicolon, afterSemicolon) = break (== ";") tokensAfterElse
-           in parseAuxiliary (drop 1 afterSemicolon) (statements ++ [BranchS (getJustValueBexp (parseAndandBoolEq (checkIfParenthesis (drop 1 beforeThen)))) (parseAuxiliary (drop 1 beforeElse) []) (parseAuxiliary beforeSemicolon [])])
-parseAuxiliary ("while" : remainingTokens) statements =
-  let (beforeDo, afterDo) = break (== "do") ("while" : remainingTokens)
-      tokensAfterDo = drop 1 afterDo
-   in case takeFirstElement tokensAfterDo of
-        "(" ->
-          let (beforeClosingParen, afterClosingParen) = break (== ")") tokensAfterDo
-           in parseAuxiliary (drop 1 afterClosingParen) (statements ++ [LoopS (getJustValueBexp (parseAndandBoolEq (checkIfParenthesis (drop 1 beforeDo)))) (parseAuxiliary beforeClosingParen [])])
-        _ ->
-          let (beforeSemicolon, afterSemicolon) = break (== ";") tokensAfterDo
-           in parseAuxiliary (drop 1 afterSemicolon) (statements ++ [LoopS (getJustValueBexp (parseAndandBoolEq (checkIfParenthesis (drop 1 beforeDo)))) (parseAuxiliary beforeSemicolon [])])
-
-getJustValueBexp :: Maybe (Bexp, [String]) -> Bexp
-getJustValueBexp (Just (booleanExpression, _)) = booleanExpression
-getJustValueBexp Nothing = error "Parse Error"
-
-checkIfParenthesis :: [String] -> [String]
-checkIfParenthesis ("(" : remainingTokens) = remainingTokens
-checkIfParenthesis remainingTokens = remainingTokens
-
-takeFirstElement :: [String] -> String
-takeFirstElement (firstElement : _) = firstElement
-parseInt :: [String] -> Maybe (Aexp, [String])
-parseInt (n : rest) =
-  case (readMaybe n :: Maybe Integer) of
-    Just f -> Just (Num f, rest)
-    Nothing -> Just (Var n, rest)
-parseInt _ = Nothing
-
-parseProductOrInteger :: [String] -> Maybe (Aexp, [String])
-parseProductOrInteger tokens =
-  parseInt tokens >>= \(firstExpression, remainingTokens) ->
-    if null remainingTokens || head remainingTokens /= "*"
-      then Just (firstExpression, remainingTokens)
-      else parseProductOrInteger (tail remainingTokens) >>= \(secondExpression, remainingTokensAfterSecondExpression) ->
-        Just (MultA firstExpression secondExpression, remainingTokensAfterSecondExpression)
-
-parseSumOrProdOrInt :: [String] -> Maybe (Aexp, [String])
-parseSumOrProdOrInt str =
-  case parseProductOrInteger str of
-    Just (expr1, "+" : restString1) ->
-      case parseSumOrProdOrInt restString1 of
-        Just (expr2, restString2) ->
-          Just (AddA expr1 expr2, restString2)
-        Nothing -> Nothing
-    Just (expr1, "-" : restString1) ->
-      case parseSumOrProdOrInt restString1 of
-        Just (expr2, restString2) ->
-          Just (SubA expr1 expr2, restString2)
-        Nothing -> Nothing
-    result -> result
-
-parseIntOrParentExpr :: [String] -> Maybe (Aexp, [String])
-parseIntOrParentExpr ("(" : rest) =
-  case parseSumOrProdOrIntOrPar rest of
-    Just (expr, ")" : restString1) -> Just (expr, restString1)
-    Just _ -> Nothing
-    Nothing -> Nothing
-parseIntOrParentExpr (n : rest) =
-  case (readMaybe n :: Maybe Integer) of
-    Just f -> Just (Num f, rest)
-    Nothing -> Just (Var n, rest)
-parseIntOrParentExpr _ = Nothing
-
-parseProdOrIntOrPar :: [String] -> Maybe (Aexp, [String])
-parseProdOrIntOrPar rest =
-  case parseIntOrParentExpr rest of
-    Just (expr1, "*" : restString1) ->
-      case parseProdOrIntOrPar restString1 of
-        Just (expr2, restString2) -> Just (MultA expr1 expr2, restString2)
-        Nothing -> Nothing
-    result -> result
-
-parseSumOrProdOrIntOrPar :: [String] -> Maybe (Aexp, [String])
-parseSumOrProdOrIntOrPar rest =
-  case parseProdOrIntOrPar rest of
-    Just (expr1, "+" : restString1) ->
-      case parseSumOrProdOrIntOrPar restString1 of
-        Just (expr2, restString2) -> Just (AddA expr1 expr2, restString2)
-        Nothing -> Nothing
-    Just (expr1, "-" : restString1) ->
-      case parseSumOrProdOrIntOrPar restString1 of
-        Just (expr2, restString2) -> Just (SubA expr1 expr2, restString2)
-        Nothing -> Nothing
-    result -> result
-
-------------- PARSE Bexp ----------------
-
-parseLessOrEqOrTrueOrFalseOrParentOrArith :: [String] -> Maybe (Bexp, [String])
-parseLessOrEqOrTrueOrFalseOrParentOrArith ("(" : rest) =
-  case parseAndandBoolEq rest of
-    Just (expr, ")" : restString1) -> Just (expr, restString1)
-    Just _ -> Nothing
-    Nothing -> Nothing
-parseLessOrEqOrTrueOrFalseOrParentOrArith ("True" : rest) = Just (TruB, rest)
-parseLessOrEqOrTrueOrFalseOrParentOrArith ("False" : rest) = Just (FalsB, rest)
-parseLessOrEqOrTrueOrFalseOrParentOrArith rest =
-  case parseSumOrProdOrIntOrPar rest of
-    Just (expr1, "<=" : restString1) ->
-      case parseSumOrProdOrIntOrPar restString1 of
-        Just (expr2, restString2) ->
-          Just (LeB expr1 expr2, restString2)
-        Nothing -> Nothing
-    Just (expr1, "==" : restString1) ->
-      case parseSumOrProdOrIntOrPar restString1 of
-        Just (expr2, restString2) ->
-          Just (EquB expr1 expr2, restString2)
-        Nothing -> Nothing
-    result -> Nothing
-
-parseNegAndLessAndEq :: [String] -> Maybe (Bexp, [String])
-parseNegAndLessAndEq ("not" : rest) =
-  case parseLessOrEqOrTrueOrFalseOrParentOrArith rest of
-    Just (expr1, restString1) ->
-      Just (NegB expr1, restString1)
-    result -> result
-parseNegAndLessAndEq rest = parseLessOrEqOrTrueOrFalseOrParentOrArith rest
-
-parseBoolEqAndNeg :: [String] -> Maybe (Bexp, [String])
-parseBoolEqAndNeg rest =
-  case parseNegAndLessAndEq rest of
-    Just (expr1, "=" : restString1) ->
-      case parseBoolEqAndNeg restString1 of
-        Just (expr2, restString2) ->
-          Just (EquBoolB expr1 expr2, restString2)
-        Nothing -> Nothing
-    result -> result
-
-parseAndandBoolEq :: [String] -> Maybe (Bexp, [String])
-parseAndandBoolEq rest =
-  case parseBoolEqAndNeg rest of
-    Just (expr1, "and" : restString1) ->
-      case parseAndandBoolEq restString1 of
-        Just (expr2, restString2) ->
-          Just (AndB expr1 expr2, restString2)
-        Nothing -> Nothing
-    result -> result
-
-
-
------------------------------------------
 
 
 lexer :: String -> [String]
@@ -322,7 +156,139 @@ lexeracc acc stracc (c : cs)
   where
     keywords = ["while", "if", "then", "else", "*", "+", "/", "-", ";", "(", ")", "<=", "==", "not", "=", "and", ":=", "do"]
 
--- List of all your tests
+parse :: String -> Program
+parse str = parseAuxiliary (lexer str) []
+
+parseAuxiliary :: [String] -> [Stm] -> [Stm]
+parseAuxiliary [] statements = statements
+parseAuxiliary (token : ":=" : remainingTokens) statements =
+  let (beforeAssignment, afterAssignment) = break (== ";") (token : ":=" : remainingTokens)
+   in case parseExpression (drop 2 beforeAssignment) [("+", AddExp), ("-", SubExp), ("*", MultExp)] of
+        Just (expression, []) -> parseAuxiliary (drop 1 afterAssignment) (statements ++ [Assign token expression])
+        Nothing -> error "Parse Error"
+        _ -> error "Parse Error"
+parseAuxiliary ("(" : remainingTokens) statements =
+  let (beforeClosingParen, afterClosingParen) = break (== ")") ("(" : remainingTokens)
+   in parseAuxiliary (drop 1 afterClosingParen) (statements ++ parseAuxiliary (drop 1 beforeClosingParen) [])
+parseAuxiliary (";" : remainingTokens) statements = parseAuxiliary remainingTokens statements
+parseAuxiliary ("if" : remainingTokens) statements =
+  let (beforeThen, afterThen) = break (== "then") ("if" : remainingTokens)
+      (beforeElse, afterElse) = break (== "else") afterThen
+      tokensAfterElse = drop 1 afterElse
+   in case takeFirstElement tokensAfterElse of
+        "(" ->
+          let (beforeClosingParen, afterClosingParen) = break (== ")") tokensAfterElse
+           in parseAuxiliary (drop 1 afterClosingParen) (statements ++ [BranchS (getJustValueBexp (parseAndExpression (checkIfParenthesis (drop 1 beforeThen)))) (parseAuxiliary (drop 1 beforeElse) []) (parseAuxiliary beforeClosingParen [])])
+        _ ->
+          let (beforeSemicolon, afterSemicolon) = break (== ";") tokensAfterElse
+           in parseAuxiliary (drop 1 afterSemicolon) (statements ++ [BranchS (getJustValueBexp (parseAndExpression (checkIfParenthesis (drop 1 beforeThen)))) (parseAuxiliary (drop 1 beforeElse) []) (parseAuxiliary beforeSemicolon [])])
+parseAuxiliary ("while" : remainingTokens) statements =
+  let (beforeDo, afterDo) = break (== "do") ("while" : remainingTokens)
+      tokensAfterDo = drop 1 afterDo
+   in case takeFirstElement tokensAfterDo of
+        "(" ->
+          let (beforeClosingParen, afterClosingParen) = break (== ")") tokensAfterDo
+           in parseAuxiliary (drop 1 afterClosingParen) (statements ++ [LoopS (getJustValueBexp (parseAndExpression (checkIfParenthesis (drop 1 beforeDo)))) (parseAuxiliary beforeClosingParen [])])
+        _ ->
+          let (beforeSemicolon, afterSemicolon) = break (== ";") tokensAfterDo
+           in parseAuxiliary (drop 1 afterSemicolon) (statements ++ [LoopS (getJustValueBexp (parseAndExpression (checkIfParenthesis (drop 1 beforeDo)))) (parseAuxiliary beforeSemicolon [])])
+
+getJustValueBexp :: Maybe (Bexp, [String]) -> Bexp
+getJustValueBexp (Just (booleanExpression, _)) = booleanExpression
+getJustValueBexp Nothing = error "Parse Error"
+
+checkIfParenthesis :: [String] -> [String]
+checkIfParenthesis ("(" : remainingTokens) = remainingTokens
+checkIfParenthesis remainingTokens = remainingTokens
+
+takeFirstElement :: [String] -> String
+takeFirstElement (firstElement : _) = firstElement
+
+
+parseExpression :: [String] -> [(String, Aexp -> Aexp -> Aexp)] -> Maybe (Aexp, [String])
+parseExpression tokens [] = parseInt tokens
+parseExpression tokens ((operator, constructor) : rest) = do
+  (firstExpression, remainingTokens) <- parseExpression tokens rest
+  if null remainingTokens || head remainingTokens /= operator
+    then return (firstExpression, remainingTokens)
+    else do
+      (secondExpression, remainingTokensAfterSecondExpression) <- parseExpression (tail remainingTokens) rest
+      return (constructor firstExpression secondExpression, remainingTokensAfterSecondExpression)
+
+parseInt :: [String] -> Maybe (Aexp, [String])
+parseInt ("(" : rest) = do
+  (expr, restString1) <- parseExpression rest [("+", AddExp), ("-", SubExp), ("*", MultExp)]
+  if head restString1 == ")"
+    then return (expr, tail restString1)
+    else Nothing
+parseInt (n : rest) = do
+  case reads n :: [(Integer, String)] of
+    [(f, "")] -> return (Num f, rest)
+    _ -> return (VarExp n, rest)
+parseInt _ = Nothing
+------------- PARSE Bexp ----------------
+
+parseBaseBooleanExpression :: [String] -> Maybe (Bexp, [String])
+parseBaseBooleanExpression tokens = case tokens of
+  ("(" : remainingTokens) -> do
+    let maybeExpr = parseAndExpression remainingTokens
+    case maybeExpr of
+      Just (expr, restString1) ->
+        if head restString1 == ")"
+          then Just (expr, tail restString1)
+          else Nothing
+      Nothing -> Nothing
+  ("True" : remainingTokens) -> Just (TruB, remainingTokens)
+  ("False" : remainingTokens) -> Just (FalsB, remainingTokens)
+  remainingTokens -> do
+    let maybeExpr1 = parseExpression remainingTokens [("+", AddExp), ("-", SubExp), ("*", MultExp)]
+    case maybeExpr1 of
+      Just (expression1, "<=" : remainingTokensAfterOperator) -> do
+        let maybeExpr2 = parseExpression remainingTokensAfterOperator [("+", AddExp), ("-", SubExp), ("*", MultExp)]
+        case maybeExpr2 of
+          Just (expression2, remainingTokensAfterExpression) -> Just (LeExp expression1 expression2, remainingTokensAfterExpression)
+          Nothing -> Nothing
+      Just (expression1, "==" : remainingTokensAfterOperator) -> do
+        let maybeExpr2 = parseExpression remainingTokensAfterOperator [("+", AddExp), ("-", SubExp), ("*", MultExp)]
+        case maybeExpr2 of
+          Just (expression2, remainingTokensAfterExpression) -> Just (EquAExp expression1 expression2, remainingTokensAfterExpression)
+          Nothing -> Nothing
+      _ -> Nothing
+
+parseNegationExpression :: [String] -> Maybe (Bexp, [String])
+parseNegationExpression tokens = case tokens of
+  ("not" : remainingTokens) -> do
+    let maybeExpr = parseBaseBooleanExpression remainingTokens
+    case maybeExpr of
+      Just (expression, remainingTokensAfterExpression) -> Just (NegExp expression, remainingTokensAfterExpression)
+      Nothing -> Nothing
+  remainingTokens -> parseBaseBooleanExpression remainingTokens
+
+parseEqualityExpression :: [String] -> Maybe (Bexp, [String])
+parseEqualityExpression tokens = do
+  let maybeExpr1 = parseNegationExpression tokens
+  case maybeExpr1 of
+    Just (expression1, "=" : remainingTokensAfterOperator) -> do
+      let maybeExpr2 = parseEqualityExpression remainingTokensAfterOperator
+      case maybeExpr2 of
+        Just (expression2, remainingTokensAfterExpression) -> Just (EquBoExp expression1 expression2, remainingTokensAfterExpression)
+        Nothing -> Nothing
+    _ -> maybeExpr1
+
+parseAndExpression :: [String] -> Maybe (Bexp, [String])
+parseAndExpression tokens = do
+  let maybeExpr1 = parseEqualityExpression tokens
+  case maybeExpr1 of
+    Just (expression1, "and" : remainingTokensAfterOperator) -> do
+      let maybeExpr2 = parseAndExpression remainingTokensAfterOperator
+      case maybeExpr2 of
+        Just (expression2, remainingTokensAfterExpression) -> Just (AndExp expression1 expression2, remainingTokensAfterExpression)
+        Nothing -> Nothing
+    _ -> maybeExpr1
+
+
+
+
 tests :: [(Code, (String, String))]
 tests =
   [ ([Push 10, Push 4, Push 3, Sub, Mult], ("-10", "")),
@@ -354,7 +320,7 @@ testParser programCode = (stack2Str stack, state2Str state)
     (_, stack, state) = run (compile (parse programCode), createEmptyStack, createEmptyState)
 
 parserTests :: [(String, (String, String))]
-parserTests =
+parserTests = 
   [ ("x := 5; x := x - 1;", ("", "x=4")),
     ("x := 0 - 2;", ("", "x=-2")),
     ("if (not True and 2 <= 5 = 3 == 4) then x :=1; else y := 2;", ("", "y=2")),
@@ -367,9 +333,10 @@ parserTests =
     ("if (1 == 0+1 = (2+1 == 4)) then x := 1; else x := 2;", ("", "x=2")),
     ("x := 2; y := (x - 3)*(4 + 2*3); z := x +x*(2);", ("", "x=2,y=-10,z=6")),
     ("i := 10; fact := 1; while (not(i == 1)) do (fact := fact * i; i := i - 1;);", ("", "fact=3628800,i=1"))
+    
   ]
 
--- Function to run all parser tests
+
 runParserTests :: [(String, (String, String))] -> IO ()
 runParserTests [] = return ()
 runParserTests ((code, expected) : rest) = do
@@ -379,7 +346,7 @@ runParserTests ((code, expected) : rest) = do
     else putStrLn $ "Test failed: " ++ code ++ "\nExpected: " ++ show expected ++ "\nGot: " ++ show result
   runParserTests rest
 
--- Run all tests
+
 main :: IO ()
 main = do
   putStrLn "Running assembler tests..."
@@ -393,7 +360,6 @@ testAssembler code = (stack2Str stack, state2Str state)
   where
     (_, stack, state) = run (code, createEmptyStack, createEmptyState)
 
--- Function to run all tests
 runTests :: [(Code, (String, String))] -> IO ()
 runTests [] = return ()
 runTests ((code, expected) : rest) = do
