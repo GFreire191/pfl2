@@ -103,7 +103,7 @@ data Aexp = Num Integer | VarExp String | AddExp Aexp Aexp | SubExp Aexp Aexp | 
 
 data Bexp = EquAExp Aexp Aexp | LeExp Aexp Aexp | AndExp Bexp Bexp | EquBoExp Bexp Bexp | NegExp Bexp | TruB | FalsB deriving (Show)
 
-data Stm = BranchS Bexp [Stm] [Stm] | LoopS Bexp [Stm] | Assign String Aexp deriving (Show)
+data Stm = BranchExp Bexp [Stm] [Stm] | LoopExp Bexp [Stm] | Assign String Aexp deriving (Show)
 
 type Program = [Stm]
 
@@ -129,8 +129,8 @@ compile = concatMap compileStm
 compileStm :: Stm -> Code
 compileStm stm = case stm of
   Assign var aexp -> compA aexp ++ [Store var]
-  BranchS bexp stm1 stm2 -> compB bexp ++ [Branch (compile stm1) (compile stm2)]
-  LoopS bexp stm -> [Loop (compB bexp) (compile stm)]
+  BranchExp bexp stm1 stm2 -> compB bexp ++ [Branch (compile stm1) (compile stm2)]
+  LoopExp bexp stm -> [Loop (compB bexp) (compile stm)]
 
 
 
@@ -178,20 +178,20 @@ parseAuxiliary ("if" : remainingTokens) statements =
    in case takeFirstElement tokensAfterElse of
         "(" ->
           let (beforeClosingParen, afterClosingParen) = break (== ")") tokensAfterElse
-           in parseAuxiliary (drop 1 afterClosingParen) (statements ++ [BranchS (getJustValueBexp (parseAndExpression (checkIfParenthesis (drop 1 beforeThen)))) (parseAuxiliary (drop 1 beforeElse) []) (parseAuxiliary beforeClosingParen [])])
+           in parseAuxiliary (drop 1 afterClosingParen) (statements ++ [BranchExp (getJustValueBexp (parseAndExpression (checkIfParenthesis (drop 1 beforeThen)))) (parseAuxiliary (drop 1 beforeElse) []) (parseAuxiliary beforeClosingParen [])])
         _ ->
           let (beforeSemicolon, afterSemicolon) = break (== ";") tokensAfterElse
-           in parseAuxiliary (drop 1 afterSemicolon) (statements ++ [BranchS (getJustValueBexp (parseAndExpression (checkIfParenthesis (drop 1 beforeThen)))) (parseAuxiliary (drop 1 beforeElse) []) (parseAuxiliary beforeSemicolon [])])
+           in parseAuxiliary (drop 1 afterSemicolon) (statements ++ [BranchExp (getJustValueBexp (parseAndExpression (checkIfParenthesis (drop 1 beforeThen)))) (parseAuxiliary (drop 1 beforeElse) []) (parseAuxiliary beforeSemicolon [])])
 parseAuxiliary ("while" : remainingTokens) statements =
   let (beforeDo, afterDo) = break (== "do") ("while" : remainingTokens)
       tokensAfterDo = drop 1 afterDo
    in case takeFirstElement tokensAfterDo of
         "(" ->
           let (beforeClosingParen, afterClosingParen) = break (== ")") tokensAfterDo
-           in parseAuxiliary (drop 1 afterClosingParen) (statements ++ [LoopS (getJustValueBexp (parseAndExpression (checkIfParenthesis (drop 1 beforeDo)))) (parseAuxiliary beforeClosingParen [])])
+           in parseAuxiliary (drop 1 afterClosingParen) (statements ++ [LoopExp (getJustValueBexp (parseAndExpression (checkIfParenthesis (drop 1 beforeDo)))) (parseAuxiliary beforeClosingParen [])])
         _ ->
           let (beforeSemicolon, afterSemicolon) = break (== ";") tokensAfterDo
-           in parseAuxiliary (drop 1 afterSemicolon) (statements ++ [LoopS (getJustValueBexp (parseAndExpression (checkIfParenthesis (drop 1 beforeDo)))) (parseAuxiliary beforeSemicolon [])])
+           in parseAuxiliary (drop 1 afterSemicolon) (statements ++ [LoopExp (getJustValueBexp (parseAndExpression (checkIfParenthesis (drop 1 beforeDo)))) (parseAuxiliary beforeSemicolon [])])
 
 getJustValueBexp :: Maybe (Bexp, [String]) -> Bexp
 getJustValueBexp (Just (booleanExpression, _)) = booleanExpression
@@ -205,6 +205,7 @@ takeFirstElement :: [String] -> String
 takeFirstElement (firstElement : _) = firstElement
 
 
+----- Aexp ----
 parseExpression :: [String] -> [(String, Aexp -> Aexp -> Aexp)] -> Maybe (Aexp, [String])
 parseExpression tokens [] = parseInt tokens
 parseExpression tokens ((operator, constructor) : rest) = do
@@ -226,7 +227,9 @@ parseInt (n : rest) = do
     [(f, "")] -> return (Num f, rest)
     _ -> return (VarExp n, rest)
 parseInt _ = Nothing
-------------- PARSE Bexp ----------------
+
+
+----- Bexp ----
 
 parseBaseBooleanExpression :: [String] -> Maybe (Bexp, [String])
 parseBaseBooleanExpression tokens = case tokens of
@@ -332,8 +335,17 @@ parserTests =
     ("if (1 == 0+1 = 2+1 == 3) then x := 1; else x := 2;", ("", "x=1")),
     ("if (1 == 0+1 = (2+1 == 4)) then x := 1; else x := 2;", ("", "x=2")),
     ("x := 2; y := (x - 3)*(4 + 2*3); z := x +x*(2);", ("", "x=2,y=-10,z=6")),
-    ("i := 10; fact := 1; while (not(i == 1)) do (fact := fact * i; i := i - 1;);", ("", "fact=3628800,i=1"))
-    
+    ("i := 10; fact := 1; while (not(i == 1)) do (fact := fact * i; i := i - 1;);", ("", "fact=3628800,i=1")),
+    ("n := 10; a := 0; b := 1; while (not(n == 1)) do (temp := b; b := a + b; a := temp; n := n - 1;);", ("", "a=34,b=55,n=1,temp=55")),
+    ("n := 10; result := 1; while (not(n == 1)) do (result := result * n; n := n - 1;);", ("", "n=1,result=3628800")),
+    -- Additional complex tests
+    ("x := 5; y := 10; z := x*y + 2*(x+y);", ("", "x=5,y=10,z=70")),
+    ("x := 5; y := x*2; if (y == 10) then z := 1; else z := 0;", ("", "x=5,y=10,z=1")),
+    ("x := 5; y := x*2; if (y == 11) then z := 1; else z := 0;", ("", "x=5,y=10,z=0")),
+    ("x := 5; y := 10; z := x*y + 2*(x+y); if (z == 70) then w := 1; else w := 0;", ("", "x=5,y=10,z=70,w=1")),
+    ("x := 5; y := 10; z := x*y + 2*(x+y); if (z == 71) then w := 1; else w := 0;", ("", "x=5,y=10,z=70,w=0")),
+    ("x := 5; y := 10; z := x*y + 2*(x+y); if (z == 70) then w := 1; else w := 0; w := w + 1;", ("", "x=5,y=10,z=70,w=2")),
+    ("x := 5; y := 10; z := x*y + 2*(x+y); if (z == 71) then w := 1; else w := 0; w := w + 1;", ("", "x=5,y=10,z=70,w=1"))
   ]
 
 
