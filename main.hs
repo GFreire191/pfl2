@@ -125,10 +125,9 @@ compile :: Program -> Code
 compile = concatMap compileStm
 
 compileStm :: Stm -> Code
-compileStm stm = case stm of
-  Assign var aexp -> compA aexp ++ [Store var]
-  BranchExp bexp stm1 stm2 -> compB bexp ++ [Branch (compile stm1) (compile stm2)]
-  LoopExp bexp stm -> [Loop (compB bexp) (compile stm)]
+compileStm (Assign var aexp) = compA aexp ++ [Store var]
+compileStm (BranchExp bexp stm1 stm2) = compB bexp ++ [Branch (compile stm1) (compile stm2)]
+compileStm (LoopExp bexp stm) = [Loop (compB bexp) (compile stm)]
 
 
 
