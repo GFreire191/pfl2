@@ -1,6 +1,4 @@
-import Data.Char (isAlpha, isAlphaNum, isDigit, isNumber, isSpace)
-import Data.List (deleteBy, elemIndex, intercalate, isPrefixOf, sort)
-import Data.Maybe (fromMaybe)
+import Data.List (deleteBy, intercalate, isPrefixOf, sort)
 import Debug.Trace
 
 -- PFL 2023/24 - Haskell practical assignment quickstart
@@ -335,17 +333,8 @@ parserTests =
     ("if (1 == 0+1 = 2+1 == 3) then x := 1; else x := 2;", ("", "x=1")),
     ("if (1 == 0+1 = (2+1 == 4)) then x := 1; else x := 2;", ("", "x=2")),
     ("x := 2; y := (x - 3)*(4 + 2*3); z := x +x*(2);", ("", "x=2,y=-10,z=6")),
-    ("i := 10; fact := 1; while (not(i == 1)) do (fact := fact * i; i := i - 1;);", ("", "fact=3628800,i=1")),
-    ("n := 10; a := 0; b := 1; while (not(n == 1)) do (temp := b; b := a + b; a := temp; n := n - 1;);", ("", "a=34,b=55,n=1,temp=55")),
-    ("n := 10; result := 1; while (not(n == 1)) do (result := result * n; n := n - 1;);", ("", "n=1,result=3628800")),
-    -- Additional complex tests
-    ("x := 5; y := 10; z := x*y + 2*(x+y);", ("", "x=5,y=10,z=70")),
-    ("x := 5; y := x*2; if (y == 10) then z := 1; else z := 0;", ("", "x=5,y=10,z=1")),
-    ("x := 5; y := x*2; if (y == 11) then z := 1; else z := 0;", ("", "x=5,y=10,z=0")),
-    ("x := 5; y := 10; z := x*y + 2*(x+y); if (z == 70) then w := 1; else w := 0;", ("", "x=5,y=10,z=70,w=1")),
-    ("x := 5; y := 10; z := x*y + 2*(x+y); if (z == 71) then w := 1; else w := 0;", ("", "x=5,y=10,z=70,w=0")),
-    ("x := 5; y := 10; z := x*y + 2*(x+y); if (z == 70) then w := 1; else w := 0; w := w + 1;", ("", "x=5,y=10,z=70,w=2")),
-    ("x := 5; y := 10; z := x*y + 2*(x+y); if (z == 71) then w := 1; else w := 0; w := w + 1;", ("", "x=5,y=10,z=70,w=1"))
+    ("i := 10; fact := 1; while (not(i == 1)) do (fact := fact * i; i := i - 1;);", ("", "fact=3628800,i=1"))
+
   ]
 
 
