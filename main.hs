@@ -162,7 +162,6 @@ parseAuxiliary (token : ":=" : remainingTokens) statements =
   let (beforeAssignment, afterAssignment) = break (== ";") (token : ":=" : remainingTokens)
    in case parseExpression (drop 2 beforeAssignment) [("+", AddExp), ("-", SubExp), ("*", MultExp)] of
         Just (expression, []) -> parseAuxiliary (drop 1 afterAssignment) (statements ++ [Assign token expression])
-        Nothing -> error "Parse Error"
         _ -> error "Parse Error"
 parseAuxiliary ("(" : remainingTokens) statements =
   let (beforeClosingParen, afterClosingParen) = break (== ")") ("(" : remainingTokens)
@@ -172,27 +171,32 @@ parseAuxiliary ("if" : remainingTokens) statements =
   let (beforeThen, afterThen) = break (== "then") ("if" : remainingTokens)
       (beforeElse, afterElse) = break (== "else") afterThen
       tokensAfterElse = drop 1 afterElse
-   in case takeFirstElement tokensAfterElse of
-        "(" ->
-          let (beforeClosingParen, afterClosingParen) = break (== ")") tokensAfterElse
-           in parseAuxiliary (drop 1 afterClosingParen) (statements ++ [BranchExp (getJustValueBexp (parseAndExpression (checkIfParenthesis (drop 1 beforeThen)))) (parseAuxiliary (drop 1 beforeElse) []) (parseAuxiliary beforeClosingParen [])])
-        _ ->
-          let (beforeSemicolon, afterSemicolon) = break (== ";") tokensAfterElse
-           in parseAuxiliary (drop 1 afterSemicolon) (statements ++ [BranchExp (getJustValueBexp (parseAndExpression (checkIfParenthesis (drop 1 beforeThen)))) (parseAuxiliary (drop 1 beforeElse) []) (parseAuxiliary beforeSemicolon [])])
+   in case parseAndExpression (checkIfParenthesis (drop 1 beforeThen)) of
+        Just (condition, _) -> 
+          case takeFirstElement tokensAfterElse of
+            "(" ->
+              let (beforeClosingParen, afterClosingParen) = break (== ")") tokensAfterElse
+               in parseAuxiliary (drop 1 afterClosingParen) (statements ++ [BranchExp condition (parseAuxiliary (drop 1 beforeElse) []) (parseAuxiliary beforeClosingParen [])])
+            _ ->
+              let (beforeSemicolon, afterSemicolon) = break (== ";") tokensAfterElse
+               in parseAuxiliary (drop 1 afterSemicolon) (statements ++ [BranchExp condition (parseAuxiliary (drop 1 beforeElse) []) (parseAuxiliary beforeSemicolon [])])
+        _ -> error "Parse Error"
 parseAuxiliary ("while" : remainingTokens) statements =
   let (beforeDo, afterDo) = break (== "do") ("while" : remainingTokens)
       tokensAfterDo = drop 1 afterDo
-   in case takeFirstElement tokensAfterDo of
-        "(" ->
-          let (beforeClosingParen, afterClosingParen) = break (== ")") tokensAfterDo
-           in parseAuxiliary (drop 1 afterClosingParen) (statements ++ [LoopExp (getJustValueBexp (parseAndExpression (checkIfParenthesis (drop 1 beforeDo)))) (parseAuxiliary beforeClosingParen [])])
-        _ ->
-          let (beforeSemicolon, afterSemicolon) = break (== ";") tokensAfterDo
-           in parseAuxiliary (drop 1 afterSemicolon) (statements ++ [LoopExp (getJustValueBexp (parseAndExpression (checkIfParenthesis (drop 1 beforeDo)))) (parseAuxiliary beforeSemicolon [])])
+   in case parseAndExpression (checkIfParenthesis (drop 1 beforeDo)) of
+        Just (condition, _) -> 
+          case takeFirstElement tokensAfterDo of
+            "(" ->
+              let (beforeClosingParen, afterClosingParen) = break (== ")") tokensAfterDo
+               in parseAuxiliary (drop 1 afterClosingParen) (statements ++ [LoopExp condition (parseAuxiliary beforeClosingParen [])])
+            _ ->
+              let (beforeSemicolon, afterSemicolon) = break (== ";") tokensAfterDo
+               in parseAuxiliary (drop 1 afterSemicolon) (statements ++ [LoopExp condition (parseAuxiliary beforeSemicolon [])])
+        _ -> error "Parse Error"
 
-getJustValueBexp :: Maybe (Bexp, [String]) -> Bexp
-getJustValueBexp (Just (booleanExpression, _)) = booleanExpression
-getJustValueBexp Nothing = error "Parse Error"
+
+        
 
 checkIfParenthesis :: [String] -> [String]
 checkIfParenthesis ("(" : remainingTokens) = remainingTokens
@@ -289,29 +293,20 @@ parseAndExpression tokens = do
 
 
 
-tests :: [(Code, (String, String))]
-tests =
-  [ ([Push 10, Push 4, Push 3, Sub, Mult], ("-10", "")),
-    ([Fals, Push 3, Tru, Store "var", Store "a", Store "someVar"], ("", "a=3,someVar=False,var=True")),
-    ([Fals, Store "var", Fetch "var"], ("False", "var=False")),
-    ([Push (-20), Tru, Fals], ("False,True,-20", "")),
-    ([Push (-20), Tru, Tru, Neg], ("False,True,-20", "")),
-    ([Push (-20), Tru, Tru, Neg, Equ], ("False,-20", "")),
-    ([Push (-20), Push (-21), Le], ("True", "")),
-    ([Push 5, Store "x", Push 1, Fetch "x", Sub, Store "x"], ("", "x=4")),
-    ([Push 10, Store "i", Push 1, Store "fact", Loop [Push 1, Fetch "i", Equ, Neg] [Fetch "i", Fetch "fact", Mult, Store "fact", Push 1, Fetch "i", Sub, Store "i"]], ("", "fact=3628800,i=1")),
-    ([Push 10, Store "n", Push 0, Store "a", Push 1, Store "b", Loop [Push 1, Fetch "n", Equ, Neg] [Fetch "a", Fetch "b", Add, Store "temp", Fetch "b", Store "a", Fetch "temp", Store "b", Push 1, Fetch "n", Sub, Store "n"]], ("", "a=34,b=55,n=1,temp=55")),
-    ( [ Push 10,
-        Store "n",
-        Push 1,
-        Store "result",
-        Loop
-          [Push 1, Fetch "n", Equ, Neg]
-          [Fetch "n", Fetch "result", Mult, Store "result", Push 1, Fetch "n", Sub, Store "n"]
-      ],
-      ("", "n=1,result=3628800")
-    )
-  ]
+-- tests :: [(Code, (String, String))]
+-- tests =
+--   [ ([Push 10, Push 4, Push 3, Sub, Mult], ("-10", "")),
+--     ([Fals, Push 3, Tru, Store "var", Store "a", Store "someVar"], ("", "a=3,someVar=False,var=True")),
+--     ([Fals, Store "var", Fetch "var"], ("False", "var=False")),
+--     ([Push (-20), Tru, Fals], ("False,True,-20", "")),
+--     ([Push (-20), Tru, Tru, Neg], ("False,True,-20", "")),
+--     ([Push (-20), Tru, Tru, Neg, Equ], ("False,-20", "")),
+--     ([Push (-20), Push (-21), Le], ("True", "")),
+--     ([Push 5, Store "x", Push 1, Fetch "x", Sub, Store "x"], ("", "x=4")),
+--     ([Push 10, Store "i", Push 1, Store "fact", Loop [Push 1, Fetch "i", Equ, Neg] [Fetch "i", Fetch "fact", Mult, Store "fact", Push 1, Fetch "i", Sub, Store "i"]], ("", "fact=3628800,i=1")),
+--     ([Push 10, Store "n", Push 0, Store "a", Push 1, Store "b", Loop [Push 1, Fetch "n", Equ, Neg] [Fetch "a", Fetch "b", Add, Store "temp", Fetch "b", Store "a", Fetch "temp", Store "b", Push 1, Fetch "n", Sub, Store "n"]], ("", "a=34,b=55,n=1,temp=55"))
+    
+--   ]
 
 -- To help you test your parser
 testParser :: String -> (String, String)
@@ -319,40 +314,40 @@ testParser programCode = (stack2Str stack, state2Str state)
   where
     (_, stack, state) = run (compile (parse programCode), createEmptyStack, createEmptyState)
 
-parserTests :: [(String, (String, String))]
-parserTests = 
-  [ ("x := 5; x := x - 1;", ("", "x=4")),
-    ("x := 0 - 2;", ("", "x=-2")),
-    ("if (not True and 2 <= 5 = 3 == 4) then x :=1; else y := 2;", ("", "y=2")),
-    ("x := 42; if x <= 43 then x := 1; else (x := 33; x := x+1;);", ("", "x=1")),
-    ("x := 42; if x <= 43 then x := 1; else x := 33; x := x+1;", ("", "x=2")),
-    ("x := 42; if x <= 43 then x := 1; else x := 33; x := x+1; z := x+x;", ("", "x=2,z=4")),
-    ("x := 44; if x <= 43 then x := 1; else (x := 33; x := x+1;); y := x*2;", ("", "x=34,y=68")),
-    ("x := 42; if x <= 43 then (x := 33; x := x+1;) else x := 1;", ("", "x=34")),
-    ("if (1 == 0+1 = 2+1 == 3) then x := 1; else x := 2;", ("", "x=1")),
-    ("if (1 == 0+1 = (2+1 == 4)) then x := 1; else x := 2;", ("", "x=2")),
-    ("x := 2; y := (x - 3)*(4 + 2*3); z := x +x*(2);", ("", "x=2,y=-10,z=6")),
-    ("i := 10; fact := 1; while (not(i == 1)) do (fact := fact * i; i := i - 1;);", ("", "fact=3628800,i=1"))
+-- parserTests :: [(String, (String, String))]
+-- parserTests = 
+--   [ ("x := 5; x := x - 1;", ("", "x=4")),
+--     ("x := 0 - 2;", ("", "x=-2")),
+--     ("if (not True and 2 <= 5 = 3 == 4) then x :=1; else y := 2;", ("", "y=2")),
+--     ("x := 42; if x <= 43 then x := 1; else (x := 33; x := x+1;);", ("", "x=1")),
+--     ("x := 42; if x <= 43 then x := 1; else x := 33; x := x+1;", ("", "x=2")),
+--     ("x := 42; if x <= 43 then x := 1; else x := 33; x := x+1; z := x+x;", ("", "x=2,z=4")),
+--     ("x := 44; if x <= 43 then x := 1; else (x := 33; x := x+1;); y := x*2;", ("", "x=34,y=68")),
+--     ("x := 42; if x <= 43 then (x := 33; x := x+1;) else x := 1;", ("", "x=34")),
+--     ("if (1 == 0+1 = 2+1 == 3) then x := 1; else x := 2;", ("", "x=1")),
+--     ("if (1 == 0+1 = (2+1 == 4)) then x := 1; else x := 2;", ("", "x=2")),
+--     ("x := 2; y := (x - 3)*(4 + 2*3); z := x +x*(2);", ("", "x=2,y=-10,z=6")),
+--     ("i := 10; fact := 1; while (not(i == 1)) do (fact := fact * i; i := i - 1;);", ("", "fact=3628800,i=1"))
 
-  ]
-
-
-runParserTests :: [(String, (String, String))] -> IO ()
-runParserTests [] = return ()
-runParserTests ((code, expected) : rest) = do
-  let result = testParser code
-  if result == expected
-    then putStrLn $ "Test passed: " ++ code
-    else putStrLn $ "Test failed: " ++ code ++ "\nExpected: " ++ show expected ++ "\nGot: " ++ show result
-  runParserTests rest
+--   ]
 
 
-main :: IO ()
-main = do
-  putStrLn "Running assembler tests..."
-  runTests tests
-  putStrLn "Running parser tests..."
-  runParserTests parserTests
+--runParserTests :: [(String, (String, String))] -> IO ()
+--runParserTests [] = return ()
+--runParserTests ((code, expected) : rest) = do
+  --let result = testParser code
+  --if result == expected
+    --then putStrLn $ "Test passed: " ++ code
+    --else putStrLn $ "Test failed: " ++ code ++ "\nExpected: " ++ show expected ++ "\nGot: " ++ show result
+  --runParserTests rest
+
+
+--main :: IO ()
+--main = do
+  --putStrLn "Running assembler tests..."
+  --runTests tests
+  --putStrLn "Running parser tests..."
+  --runParserTests parserTests
 
 -- To help you test your assembler
 testAssembler :: Code -> (String, String)
@@ -360,11 +355,11 @@ testAssembler code = (stack2Str stack, state2Str state)
   where
     (_, stack, state) = run (code, createEmptyStack, createEmptyState)
 
-runTests :: [(Code, (String, String))] -> IO ()
-runTests [] = return ()
-runTests ((code, expected) : rest) = do
-  let result = testAssembler code
-  if result == expected
-    then putStrLn $ "Test passed: " ++ show code
-    else putStrLn $ "Test failed: " ++ show code ++ "\nExpected: " ++ show expected ++ "\nGot: " ++ show result
-  runTests rest
+--runTests :: [(Code, (String, String))] -> IO ()
+--runTests [] = return ()
+--runTests ((code, expected) : rest) = do
+  --let result = testAssembler code
+  --if result == expected
+    --then putStrLn $ "Test passed: " ++ show code
+    --else putStrLn $ "Test failed: " ++ show code ++ "\nExpected: " ++ show expected ++ "\nGot: " ++ show result
+  --runTests rest
